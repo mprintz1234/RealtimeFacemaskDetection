@@ -8,6 +8,7 @@ import os
 from imutils.video import VideoStream
 import imutils
 import time
+from torch import nn
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -18,13 +19,19 @@ def loadImage(img_path):
     return img, pil_image
 
 
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+
 def drawBox(img, bbox, out_labels, score):
+    probs = softmax(score[0].detach().numpy()[0])
     label_dict = {0: ['No Mask', (0, 0, 255)],
                   1: ['Wearing Mask', (0, 255, 0)],
-                  2: ['Wearing Mask Improperly', (255, 0, 0)]}
+                  2: ['Wearing Mask Improperly', (0, 255, 255)]}
 
     for bound, label in zip(bbox, out_labels):
-        label_str = (label_dict[int(label)])[0]
+        label_str = (label_dict[int(label)])[0] + '. Score: ' + "{:.2f}%".format(probs[int(label)] * 100)
         y = bound[1] - 10 if bound[1] - 10 > 10 else bound[1] + 10
         cv2.rectangle(img, (bound[0], bound[1]), (bound[2], bound[3]),
                       (label_dict[int(label)])[1], 2)
