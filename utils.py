@@ -1,11 +1,16 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
 
 """
 Baseline model adapted from COMP4211 Spring 2021 PA2
 """
-
-
 class PA2Net(nn.Module):
     def __init__(self, first_in_channel=1):
         super(PA2Net, self).__init__()

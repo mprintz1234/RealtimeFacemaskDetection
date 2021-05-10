@@ -2,13 +2,12 @@ import cv2
 import torch
 import torchvision.transforms as transforms
 import numpy as np
-from utils import PA2Net
+from utils import PA2Net, softmax
 from PIL import Image
 import os
 from imutils.video import VideoStream
 import imutils
 import time
-from torch import nn
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -19,12 +18,9 @@ def loadImage(img_path):
     return img, pil_image
 
 
-def softmax(x):
-    """Compute softmax values for each sets of scores in x."""
-    return np.exp(x) / np.sum(np.exp(x), axis=0)
-
-
 def drawBox(img, bbox, out_labels, score):
+    if not score:
+        return img
     probs = softmax(score[0].detach().numpy()[0])
     label_dict = {0: ['No Mask', (0, 0, 255)],
                   1: ['Wearing Mask', (0, 255, 0)],
@@ -39,6 +35,7 @@ def drawBox(img, bbox, out_labels, score):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (label_dict[int(label)])[1], 2)
 
     return img
+
 
 def facemaskDetectImage(img, pil_image):
     # Load image and run through face detection model
@@ -55,14 +52,13 @@ def facemaskDetectImage(img, pil_image):
     # Load model
     transform0 = transforms.Compose(
         [transforms.Resize((32, 32)),
-         # transforms.Grayscale(num_output_channels=1),
          transforms.ToTensor(),
          ])
     device = torch.device('cpu')
     """model = torch.load(
         '/Users/maximilian/Desktop/SideProjects/realtime_facemask_project/models/model_1_RGBNet_and_transform_best.pt',
         map_location=device)"""
-    model = torch.load('models/model_1_RGBNet_best.pt', map_location=device)
+    model = torch.load('models/model_1_RGBNet_and_transform_best.pt', map_location=device)
 
     # Output bbox and labels
     bbox = []
@@ -81,10 +77,10 @@ def facemaskDetectImage(img, pil_image):
             (startX, startY, endX, endY) = box.astype("int")
 
             # predict mask or no mask
-            #print(type(pil_image))
+            # print(type(pil_image))
             pil_cropped = pil_image.crop((startX, startY, endX, endY))
             pil_cropped = pil_cropped.convert('RGB')
-            #pil_cropped.show()
+            # pil_cropped.show()
             pil_trans = transform0(pil_cropped)
             pil_trans = pil_trans.unsqueeze(0)
             outputs = model(pil_trans.to(device))
@@ -106,20 +102,7 @@ def facemaskDetectImage(img, pil_image):
             bbox.append([startX, startY, endX, endY])
             out_labels.append(label)
             score.append(outputs)
-            # label = str(preds) + str(outputs)
 
-            # draw the bounding box of the face along with the associated
-            # probability
-            # text = "{:.2f}%".format(confidence * 100)
-            # y = startY - 10 if startY - 10 > 10 else startY + 10
-            # cv2.rectangle(img, (startX, startY), (endX, endY),
-            #              (0, 0, 255), 2)
-            # cv2.putText(img, label, (startX, y),
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-
-    # Display the output
-    # cv2.imshow('img', img)
-    # cv2.waitKey()
     return bbox, out_labels, score
 
 
@@ -129,8 +112,8 @@ def videoRun():
 
     while True:
         frame = vs.read()
+        frame = imutils.resize(frame, width=400)
         img = frame
-        #img = cv2.imread(frame)
         rgb_arr = imutils.opencv2matplotlib(frame)
         pil_image = Image.fromarray(rgb_arr)
         bbox, out_labels, score = facemaskDetectImage(img, pil_image)
