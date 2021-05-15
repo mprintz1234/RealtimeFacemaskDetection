@@ -29,9 +29,9 @@ class ModelUtils:
         self.type_transform = t_transform
         self.type_labels = {0: ['N95 Mask', (0, 0, 255)],
                             1: ['Surgical Mask', (0, 255, 0)],
-                            2: ['KN95 Mask', (0, 255, 255)],
-                            3: ['Gas Mask', (0, 255, 255)],
-                            4: ['Cloth Mask', (0, 255, 255)]}
+                            #2: ['KN95 Mask', (0, 255, 255)],
+                            #3: ['Gas Mask', (0, 255, 255)],
+                            2: ['Cloth Mask', (0, 255, 255)]}
 
     # Get all faces boundary boxes from image
     def getFaces(self, img):

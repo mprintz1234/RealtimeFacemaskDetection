@@ -108,7 +108,7 @@ def videoRun():
     models = ModelUtils('models/caffe/deploy.prototxt.txt',
                         'models/caffe/res10_300x300_ssd_iter_140000.caffemodel',
                         'models/model_1_RGBNet_and_transform_best.pt',
-                        'models/model_2_pa2net_best.pt',
+                        'models/model_2_pa2net_best_may152021.pt',
                         transform_mask,
                         transform_type,
                         torch.device('cpu'))
