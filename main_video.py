@@ -2,258 +2,152 @@ import cv2
 import torch
 import torchvision.transforms as transforms
 import numpy as np
-from utils import PA2Net
+from utils import PA2Net, softmax, ModelUtils
 from PIL import Image
 import os
 from imutils.video import VideoStream
 import imutils
 import time
-from torch import nn
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+"""
+Draws the boundary boxes and write model results over the input faces
+"""
+def drawBox(img, bbox, mask_results, type_results, models):
+    if len(bbox) != 0:
+        # loop through all detected faces in the image
+        for bound, mask, _type in zip(bbox, mask_results, type_results):
+            mask_score, mask_label = mask
+            type_score, type_label = _type
 
-def loadImage(img_path):
-    img = cv2.imread(img_path)
-    pil_image = Image.open(img_path)
-    return img, pil_image
+            # Calculate probability of mask detection
+            mask_probs = softmax(mask_score.detach().numpy()[0])
 
+            # If no mask is detected, only show no mask detected/mask worn incorrectly
+            if type_label == -1:
+                label_str = (models.mask_labels[int(mask_label)])[0] + '. Score: ' + "{:.2f}%".format(
+                    mask_probs[int(mask_label)] * 100)
 
-def softmax(x):
-    """Compute softmax values for each sets of scores in x."""
-    return np.exp(x) / np.sum(np.exp(x), axis=0)
-
-
-def drawBox(img, bbox, out_labels, score):
-    if (len(bbox) != 0):
-        probs = softmax(score[0].detach().numpy()[0])
-        label_dict = {0: ['No Mask', (0, 0, 255)],
-                    1: ['Wearing Mask', (0, 255, 0)],
-                    2: ['Wearing Mask Improperly', (0, 255, 255)]}
-
-        for bound, label in zip(bbox, out_labels):
-            label_str = (label_dict[int(label)])[0] + '. Score: ' + "{:.2f}%".format(probs[int(label)] * 100)
-            y = bound[1] - 10 if bound[1] - 10 > 10 else bound[1] + 10
-            cv2.rectangle(img, (bound[0], bound[1]), (bound[2], bound[3]),
-                        (label_dict[int(label)])[1], 2)
-            cv2.putText(img, label_str, (bound[0], y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (label_dict[int(label)])[1], 2)
-
-    return img
-
-def drawBox3(img, bbox, out_labels, out_labels2, score):
-    if (len(bbox) != 0):
-        probs = softmax(score[0].detach().numpy()[0])
-        label_dict = {0: ['No Mask', (0, 0, 255)],
-                    1: ['Wearing Mask', (0, 255, 0)],
-                    2: ['Wearing Mask Improperly', (0, 255, 255)]}
-
-        label_dict_type = {0: ['N95 Mask', (0, 0, 255)],
-                    1: ['Surgical Mask', (0, 255, 0)],
-                    2: ['KN95 Mask', (0, 255, 255)],
-                    3: ['Gas Mask', (0, 255, 255)],
-                    4: ['Cloth Mask', (0, 255, 255)]}
-
-        for bound, label, label2 in zip(bbox, out_labels, out_labels2):
-            if (label == '0'):
-                label_str = (label_dict[int(label)])[0] + '. Score: ' + "{:.2f}%".format(probs[int(label)] * 100)
+            # If mask detected, show both wearing mask and mask type
             else:
-                label_str = (label_dict[int(label)])[0] + ": {}".format((label_dict_type[int(label2)])[0]) + '. Score: ' + "{:.2f}%".format(probs[int(label)] * 100)
+                type_probs = softmax(type_score.detach().numpy()[0])
+                label_str = (models.mask_labels[int(mask_label)])[0] + ": {}".format(
+                    (models.type_labels[int(type_label)])[0]) + '. Score: ' + "{:.2f}%".format(
+                    mask_probs[int(mask_label)] * 100)
+
+            # Put the boxes and text onto the cv2 image
             y = bound[1] - 10 if bound[1] - 10 > 10 else bound[1] + 10
             cv2.rectangle(img, (bound[0], bound[1]), (bound[2], bound[3]),
-                        (label_dict[int(label)])[1], 2)
+                          (models.mask_labels[int(mask_label)])[1], 2)
             cv2.putText(img, label_str, (bound[0], y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (label_dict[int(label)])[1], 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (models.mask_labels[int(mask_label)])[1], 2)
 
+    # Return the edited image
     return img
 
 
-""" def drawBox2(img, bbox, out_labels, score):
-    if (len(bbox) != 0):
-        probs = softmax(score[0].detach().numpy()[0])
-        label_dict = {0: ['N95 Mask', (0, 0, 255)],
-                    1: ['Surgical Mask', (0, 255, 0)],
-                    2: ['KN95 Mask', (0, 255, 255)],
-                    3: ['Gas Mask', (0, 255, 255)],
-                    4: ['Cloth Mask', (0, 255, 255)]}
-
-        for bound, label in zip(bbox, out_labels):
-            label_str = (label_dict[int(label)])[0] + '. Score: ' + "{:.2f}%".format(probs[int(label)] * 100)
-            y = bound[1] - 10 if bound[1] - 10 > 10 else bound[1] + 10
-            cv2.rectangle(img, (bound[0], bound[1]), (bound[2], bound[3]),
-                        (label_dict[int(label)])[1], 2)
-            cv2.putText(img, label_str, (bound[0], y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (label_dict[int(label)])[1], 2)
-
-    return img """
-
-def facemaskDetectImage(img, pil_image):
-    # Load image and run through face detection model
-    # img = cv2.imread(img_path)
-    # pil_image = Image.open(img_path)
-    net = cv2.dnn.readNetFromCaffe('models/caffe/deploy.prototxt.txt',
-                                   'models/caffe/res10_300x300_ssd_iter_140000.caffemodel')
-    (h, w) = img.shape[:2]
-    blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0,
-                                 (300, 300), (104.0, 177.0, 123.0))
-    net.setInput(blob)
-    detections = net.forward()
-
-    # Load model
-    transform0 = transforms.Compose(
-        [transforms.Resize((32, 32)),
-         # transforms.Grayscale(num_output_channels=1),
-         transforms.ToTensor(),
-         ])
-
-    device = torch.device('cpu')
-    """model = torch.load(
-        '/Users/maximilian/Desktop/SideProjects/realtime_facemask_project/models/model_1_RGBNet_and_transform_best.pt',
-        map_location=device)"""
-    model = torch.load('models/model_1_RGBNet_best.pt', map_location=device)
-
-    # Output bbox and labels
+"""
+Detects the faces, masks, and mask type.
+Return: face boundary boxes, mask detected, and mask type
+"""
+def maskDetection(img, pil_image, models):
     bbox = []
-    out_labels = []
-    score = []
+    mask_results = []
+    type_results = []
 
-    # Draw rectangle using caffe
+    # Get face detections in img
+    detections, w, h = models.getFaces(img)
+
+    # Loop through each face
     for i in range(0, detections.shape[2]):
         confidence = detections[0, 0, i, 2]
         # filter out weak detections by ensuring the `confidence` is
         # greater than the minimum confidence
         if confidence > 0.5:
             # compute the (x, y)-coordinates of the bounding box for the
-            # object
             box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
             (startX, startY, endX, endY) = box.astype("int")
 
-            # predict mask or no mask
-            #print(type(pil_image))
+            # Predict facemask
             pil_cropped = pil_image.crop((startX, startY, endX, endY))
-            pil_cropped = pil_cropped.convert('RGB')
-            #pil_cropped.show()
-            pil_trans = transform0(pil_cropped)
-            pil_trans = pil_trans.unsqueeze(0)
-            outputs = model(pil_trans.to(device))
+            mask_outputs, mask_labels = models.getMasksModel(pil_cropped, is_rgb=True)
+            mask_results.append([mask_outputs, mask_labels])
 
-            """f = img[startY:endY, startX:endX]
-            f = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
-            f = cv2.resize(f, (32, 32))
-            #cv2.imshow('f', f)
-            #cv2.waitKey()
-            # print(f.shape)
-            f = np.moveaxis(f, -1, 0)
-            f = torch.from_numpy(f)
-            f = f.unsqueeze(0)
-            print(f.shape)
-            outputs = model(f.to(device).to(torch.float32))"""
-            preds = torch.argmax(outputs)
-            label = str(preds.item())
+            # Predict facemask type only if facemask detected
+            if mask_labels == '1':
+                type_outputs, type_labels = models.getTypeModel(pil_cropped, is_rgb=False)
+            else:
+                type_outputs = [0, 0, 0]
+                type_labels = -1
+            type_results.append([type_outputs, type_labels])
 
             bbox.append([startX, startY, endX, endY])
-            out_labels.append(label)
-            score.append(outputs)
-            # label = str(preds) + str(outputs)
 
-            # draw the bounding box of the face along with the associated
-            # probability
-            # text = "{:.2f}%".format(confidence * 100)
-            # y = startY - 10 if startY - 10 > 10 else startY + 10
-            # cv2.rectangle(img, (startX, startY), (endX, endY),
-            #              (0, 0, 255), 2)
-            # cv2.putText(img, label, (startX, y),
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+    return bbox, mask_results, type_results
 
-    # Display the output
-    # cv2.imshow('img', img)
-    # cv2.waitKey()
-    return bbox, out_labels, score
 
-def facemaskTypedetect(img, pil_image):
+"""
+Starts the video stream and initializes all models
+Begins infinite loop to loop through each frame of videostream to do prediction
+"""
+def videoRun():
+    # Initialize video stream
+    vs = VideoStream(src=0).start()
 
-    net = cv2.dnn.readNetFromCaffe('models/caffe/deploy.prototxt.txt',
-                                   'models/caffe/res10_300x300_ssd_iter_140000.caffemodel')
-    (h, w) = img.shape[:2]
-    blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0,
-                                 (300, 300), (104.0, 177.0, 123.0))
-    net.setInput(blob)
-    detections = net.forward()
-
-    # Load model
-    transform0 = transforms.Compose(
+    # Initialize models
+    transform_type = transforms.Compose(
         [transforms.Resize((32, 32)),
          transforms.Grayscale(num_output_channels=1),
          transforms.ToTensor(),
          ])
+    transform_mask = transforms.Compose(
+        [transforms.Resize((32, 32)),
+         transforms.ToTensor(),
+         ])
+    models = ModelUtils('models/caffe/deploy.prototxt.txt',
+                        'models/caffe/res10_300x300_ssd_iter_140000.caffemodel',
+                        'models/model_1_RGBNet_and_transform_best.pt',
+                        'models/model_2_pa2net_best_may152021.pt',
+                        transform_mask,
+                        transform_type,
+                        torch.device('cpu'))
 
-    device = torch.device('cpu')
-
-    model = torch.load('models/model_2_pa2net_best.pt', map_location=device)
-
-    # Output bbox and labels
-    bbox = []
-    out_labels = []
-    score = []
-
-    # Draw rectangle using caffe
-    for i in range(0, detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
-        # filter out weak detections by ensuring the `confidence` is
-        # greater than the minimum confidence
-        if confidence > 0.5:
-            # compute the (x, y)-coordinates of the bounding box for the
-            # object
-            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-            (startX, startY, endX, endY) = box.astype("int")
-  
-            # predict mask or no mask
-            #print(type(pil_image))
-            pil_cropped = pil_image.crop((startX, startY, endX, endY))
-            #pil_cropped = pil_cropped.convert('RGB')
-            #pil_cropped.show()
-            pil_trans = transform0(pil_cropped)
-            pil_trans = pil_trans.unsqueeze(0)
-            outputs = model(pil_trans.to(device))
-
-            preds = torch.argmax(outputs)
-            label = str(preds.item())
-
-            bbox.append([startX, startY, endX, endY])
-            out_labels.append(label)
-            score.append(outputs)
-
-    return bbox, out_labels, score   
-
-
-def videoRun():
-    vs = VideoStream(src=0).start()
+    # Give video stream time to warm up
     time.sleep(2)
 
+    # Enter infinite loop to get each frame of video stream
     while True:
+        # Read in image from videostream
         frame = vs.read()
+        frame = imutils.resize(frame, width=400)
         img = frame
-        #img = cv2.imread(frame)
+
+        # Process images
         rgb_arr = imutils.opencv2matplotlib(frame)
-        pil_image = Image.fromarray(rgb_arr) 
-        bbox, out_labels, score = facemaskDetectImage(img, pil_image)
-        bbox2, out_labels2, score2 = facemaskTypedetect(img, pil_image)
-        edited_img = drawBox3(img, bbox, out_labels, out_labels2, score)
-        cv2.imshow("edited_img", edited_img)
+        pil_image = Image.fromarray(rgb_arr)
+
+        # Detect faces, mask, and mask type
+        bbox, mask_results, type_results = maskDetection(img, pil_image, models)
+
+        # Draw the results on the image
+        edited_img = drawBox(img, bbox, mask_results, type_results, models)
+
+        # Display the image
+        cv2.imshow("edited_img", imutils.resize(edited_img, width=800))
         key = cv2.waitKey(1) & 0xFF
+
+        # If q pressed, end video
         if key == ord("q"):
             break
 
-    # do a bit of cleanup
+    # clean up
     cv2.destroyAllWindows()
     vs.stop()
 
 
+"""
+Driver function of the streaming application
+"""
 if __name__ == '__main__':
     videoRun()
-
-    """img_path = 'group_test.jpg'
-    img, pil_image = loadImage(img_path)
-    bbox, out_labels, score = facemaskDetectImage(img, pil_image)
-    img = drawBox(img, bbox, out_labels, score)
-    cv2.imshow('img', img)
-    cv2.waitKey()"""
