@@ -9,7 +9,7 @@ from imutils.video import VideoStream
 import imutils
 import time
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+#os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 """
 Draws the boundary boxes and write model results over the input faces
