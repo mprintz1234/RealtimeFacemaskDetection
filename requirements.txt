@@ -1,0 +1,15 @@
+certifi==2020.12.5
+dataclasses @ file:///tmp/build/80754af9/dataclasses_1614363715916/work
+imutils==0.5.4
+mkl-fft==1.3.0
+mkl-random==1.0.4
+mkl-service==2.3.0
+numpy==1.19.5
+olefile==0.46
+opencv-python==4.5.1.48
+Pillow @ file:///opt/concourse/worker/volumes/live/d0757663-0751-456b-5d22-3c7bd181f2a1/volume/pillow_1617386150680/work
+six @ file:///opt/concourse/worker/volumes/live/5839b2d2-7415-4ff0-4c61-c4cddf798f7c/volume/six_1605205320479/work
+torch==1.7.1
+torchaudio==0.7.0a0+a853dff
+torchvision==0.8.2
+typing-extensions @ file:///home/ktietz/src/ci_mi/typing_extensions_1612808209620/work
